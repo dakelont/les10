@@ -1,0 +1,191 @@
+<!doctype html>
+<html>
+  <head>
+    <title></title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+	  .list {    width: 40%;     float: left;     margin: 0 4%; min-height: 100%; }
+	  body, html {  height: 100%; }
+      body { font: 14px Arial; }
+      form { padding: 3px;
+    position: relative;
+    bottom: 0;
+    width: 100%;
+    margin: 0 0 0 -6px; }
+      input[type="text"], select { border: 2px solid #000; padding: 10px 70px 10px 10px;    width: 46%;    margin-right: .5%;    float: left; }
+	 textarea { border: 2px solid #000; clear: both;
+    width: 100%;
+    margin: 5px 0;
+    padding: 5px; }
+      form button { width: 60px; right: 3px; background: #c5c5c5; border: none; padding: 10px;     margin: 0 1%; }      
+	  .user { width: 50%; height: 100%; background: #f5f5f5; padding: 3px; border: 3px solid #999; }
+	  #users, #tasks { list-style-type: none; margin:0; padding: 0; }     
+	  #users li, #tasks li { padding: 5px 10px; }
+      #users li:nth-child(odd), #tasks li:nth-child(odd) { background: #eee; }
+	  .search {right: -60px;}
+    </style>
+  </head>
+  <body>
+  <div class="list">
+    <ul id="users"></ul>
+    <form action="">
+      <input id="userName" type="text" placeholder="Имя пользователя" autocomplete="off" /><input id="userId" type="hidden" />
+	  <button id="userSave">Save</button><button id="userSearch">Search</button>
+    </form>
+	</div>
+  <div class="list">
+    <ul id="tasks"></ul>
+    <form action="">
+      <input id="taskName" type="text" placeholder="Задача" autocomplete="off" />
+	  <select id="usersList"><option>Список пользователей</option></select>
+	  <div style="clear:both"><input type="checkbox" id="taskOpen" value="1" checked /> Задача открыта</div>
+
+	  <textarea id="taskDesc"  placeholder="Описание задачи" autocomplete="off"></textarea><input id="taskId" type="hidden" /><button id="taskSave">Save</button><button id="taskSearch">Search</button>
+    </form>
+	</div>
+	<script src="/socket.io/socket.io.js"></script>
+	<script src="//code.jquery.com/jquery-2.2.4.min.js"></script>
+	<script>
+	  var socket = io();
+	  $('#taskSave').click(function(){
+		var task = {};
+		task.taskName = $('#taskName').val();
+		task.usersList = $('#usersList').val();
+		task.taskOpen = $('#taskOpen').val();
+		task.taskDesc = $('#taskDesc').val();
+		if ($('#taskId').val() != '') task.taskId = $('#taskId').val();
+		socket.emit('task add', task);
+		$('#userName, #taskDesc, #taskId').val('');
+		return false;
+	  });
+	  
+	  $('#taskSearch').click(function(){
+		var task = {};
+		task.taskName = $('#taskName').val();
+		task.taskDesc = $('#taskDesc').val();
+		socket.emit('task search', task);
+		return false;
+	  });
+	  
+	  socket.on('task add', function(msg){
+		console.log(msg);
+		var text=[];
+		text.push(`<div class="taskName">${msg.taskName}</div>`);
+		text.push(`<div class="taskDesc">${msg.taskDesc}</div>`);
+		text.push(`<div class="usersList">${msg.usersList}</div>`);
+		if (msg.taskOpen == 1) text.push('<div class="taskOpen"><b>Задача открыта</b></div>');
+		else text.push('<div><i>Задача закрыта</i></div>');
+		text.push('<span onclick="editItemTask(\'' + msg._id + '\')"> Редактировать</span>  <span onclick="delItemTask(\'' + msg._id + '\')">Удалить</span>');
+		console.log(text);
+		if (msg.id) { 
+			$('li.' + msg._id).html(text.join(''));
+		}
+		else {
+			$('#tasks').append($('<li>').addClass(msg._id).html(text.join('')));
+		}
+	  });
+	  
+	  socket.on('task remove', function(msg){
+		$('.' + msg.userId).remove();
+	  });
+	  
+	  socket.emit('all task');
+	  
+	  socket.on('all task', function(msg){
+		$('#users li').remove();
+		$('#usersList option').remove();
+		  $(msg).each(function(indx, element){
+			var text=[];
+			text.push(`<div class="taskName">${element.taskName}</div>`);
+			text.push(`<div class="taskDesc">${element.taskDesc}</div>`);
+			text.push(`<div class="usersList">${element.usersList}</div>`);
+			if (element.taskOpen == 1) text.push('<div class="taskOpen"><b>Задача открыта</b></div>');
+			else text.push('<div><i>Задача закрыта</i></div>');
+			text.push('<span onclick="editItemTask(\'' + element._id + '\')"> Редактировать</span>  <span onclick="delItemTask(\'' + element._id + '\')">Удалить</span>');
+			console.log(text);
+			$('#tasks').append($('<li>').addClass(element._id).html(text.join('')));
+		  });
+	  });
+	  
+	  function editItemTask(id) {
+		var task = {};
+		$('#taskName').val($('.' + id + ' .taskName').html());
+		$('#taskDesc').val($('.' + id + ' .taskDesc').html());
+		task.usersList = $('.' + id + ' .usersList').html();
+		task.taskOpen = ($('.' + id + ' .taskOpen').html()) ? 1 : 0;
+		
+		if (task.taskOpen==1) $('#taskOpen').prop("checked", true);
+		else $('#taskOpen').prop("checked", false);
+		
+		$('#usersList option').each(function(indx, element){
+		  if(task.usersList == $(element).html()) $(element).attr("selected", "selected");
+		});
+		$('#taskId').val(id);
+		return false;
+	  }
+	  function delItemTask(id) {
+		socket.emit('task remove', {'taskId':id});
+	  }
+	  
+	  /////////////////////
+	  $('#userSave').click(function(){
+		var user = {};
+		user.userName = $('#userName').val();
+		if ($('#userId').val() != '') user.userId = $('#userId').val();
+		socket.emit('user add', user);
+		$('#userName, #userId').val('');
+		return false;
+	  });
+	  
+	  $('#userSearch').click(function(){
+		var user = {};
+		user.taskName = $('#userName').val();
+		socket.emit('user search', user);
+		return false;
+	  });
+	  
+	  socket.on('user add', function(msg){
+		console.log(msg);
+		var text=[];
+		text.push(msg.userName);
+		text.push(' <span onclick="editItem({userId:\'' + msg._id + '\', userName:\'' + msg.userName + '\'})"> Редактировать</span>  <span onclick="delItem(\'' + msg._id + '\')">Удалить</span>');
+		console.log(text);
+		if (msg._id) { 
+			$('li.' + msg._id).html(text.join(''));
+			$('option.' + msg._id).html(msg.userName);
+		}
+		else {
+			$('#users').append($('<li>').addClass(msg._id).html(text.join('')));
+			$('#usersList').append($('<option>').addClass(msg._id).html(msg.userName));
+		}
+	  });
+	  
+	  socket.on('user remove', function(msg){
+		$('.' + msg.userId).remove();
+	  });
+	  
+	  socket.emit('all users');
+	  
+	  socket.on('all users', function(msg){
+		$('#users li').remove();
+		$('#usersList option').remove();
+		  $(msg).each(function(indx, element){
+			var text=[];
+			text.push(element.userName);
+			text.push('<span onclick="editItem({userId:\'' + element._id + '\', userName:\'' + element.userName + '\'})"> Редактировать</span>  <span onclick="delItem(\'' + element._id + '\')">Удалить</span>');
+			$('#users').append($('<li>').addClass(element._id).html(text.join('')));
+			$('#usersList').append($('<option>').addClass(element._id).html(element.userName));
+		  });
+	  });
+	  
+	  function editItem(id) {
+		$('#userName').val(id.userName);
+		$('#userId').val(id.userId);
+		return false;
+	  }
+	  function delItem(id) {
+		socket.emit('user remove', {'userId':id});
+	  }
+	</script>
+  </body>
+</html>
